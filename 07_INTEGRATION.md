@@ -47,6 +47,23 @@
 - VPC Endpoint (Interface) for private access
 - Resource policy for cross-account access
 
+### Real-World Use Cases & When to Use SQS
+
+> **The problem it solves:** Decouple producers from consumers — the producer sends a message and doesn't care how fast the consumer processes it. Absorbs traffic spikes, enables independent scaling, and provides resilience when consumers go down.
+
+**Choose Standard Queue:** High-throughput, order doesn't matter (order processing with idempotent consumers, image processing).
+**Choose FIFO Queue:** Order is critical AND at-most-once delivery (payment transactions, inventory updates).
+
+**Real-World Scenarios:**
+| Business Problem | SQS Solution |
+|-----------------|-------------|
+| E-commerce: order service is 10x faster than fulfillment service — orders pile up | SQS Standard Queue — orders buffer in queue, fulfillment consumers process at their own pace |
+| Image upload service: 10,000 images arrive in 5 min — processing takes 30 min total | SQS + Lambda (event source mapping) — Lambda scales to process queue depth |
+| Payment processing — each transaction must be processed exactly once in order | **FIFO Queue** — strict ordering, deduplication, exactly-once processing |
+| Failed email notifications: don't lose them, retry up to 3 times | DLQ configured — after 3 `maxReceiveCount` failures, message goes to DLQ for investigation |
+| Tasks are large (500MB video files) but SQS max is 256KB | **SQS Extended Client Library** — stores payload in S3, SQS message has S3 pointer |
+| Consumers process slowly — don't want to poll constantly and waste API calls | **Long Polling** — `WaitTimeSeconds=20` — reduces empty responses, cuts costs |
+
 ---
 
 ## SNS — Simple Notification Service
@@ -82,6 +99,22 @@ App → SNS Topic → SQS Queue 1 (email service)
 - SSE with KMS
 - Resource policy for cross-account
 - VPC Interface Endpoint
+
+### Real-World Use Cases & When to Use SNS
+
+> **The problem it solves:** Push one message and deliver it to ALL subscribers simultaneously — notifications, fan-out to multiple services, or cross-service event broadcasting.
+
+**Real-World Scenarios:**
+| Business Problem | SNS Solution |
+|-----------------|-------------|
+| Order placed — need to notify email, SMS, and trigger 3 microservices | SNS Topic → subscribers: email, SMS, SQS Queue (fraud service), SQS Queue (inventory), Lambda |
+| Ops team needs critical alert for RDS failover sent to Slack + PagerDuty | CloudWatch Alarm → SNS → HTTP/HTTPS endpoint (Slack webhook) + Lambda (PagerDuty API call) |
+| Multi-account architecture: security event in account A must alert account B | SNS with resource policy for cross-account subscription |
+| Message filtering: fraud service only needs orders > $1000 | SNS **Message Filter Policy** on fraud SQS subscription — `{"amount": [{"numeric": [">", 1000]}]}` |
+| Mobile app: push notification to 1M iOS/Android devices | SNS Mobile Push (APNs + GCM/FCM) — single API call fans out to all devices |
+
+**The fan-out pattern (most exam-tested SNS pattern):**
+Single event → SNS Topic → multiple SQS Queues → independent consumer teams process in parallel. This enables decoupling + parallel processing without tight coupling.
 
 ---
 
@@ -125,6 +158,23 @@ App → SNS Topic → SQS Queue 1 (email service)
 - Discover and track event schemas
 - Generate code bindings (Java, Python, TypeScript)
 
+### Real-World Use Cases & When to Use EventBridge
+
+> **The problem it solves:** React to events from AWS services, your own apps, and SaaS tools — route events to the right targets based on content without polling or tight coupling.
+
+**Choose EventBridge when:** You need rich content-based filtering, AWS service event integration (EC2 state changes, S3 events), or SaaS integration.
+
+**Real-World Scenarios:**
+| Business Problem | EventBridge Solution |
+|-----------------|---------------------|
+| EC2 instance stops unexpectedly — auto-notify team and restart | EventBridge rule: `EC2 Instance State-change → state=stopped` → Lambda (restart + SNS alert) |
+| Cron: generate daily reports at 6 AM without a cron server | EventBridge Schedule: `cron(0 6 * * ? *)` → Lambda → generates and emails report |
+| Salesforce opportunity closes — trigger AWS order fulfillment workflow | EventBridge **Partner Event Bus** (Salesforce) → rule → Step Functions workflow |
+| Microservice A emits `OrderPlaced` event — route to fulfillment, fraud, analytics | **Custom Event Bus** → 3 rules → 3 different targets (Lambda, SQS, Kinesis) |
+| S3 objects created — need sophisticated routing (only `.jpg` files from prod bucket) | EventBridge S3 event notification → content filter → only routes matching pattern |
+
+**EventBridge vs SNS for the exam:** EventBridge = richer filtering, AWS service events, SaaS integration, cron scheduling. SNS = simple fan-out/pub-sub, mobile push, direct subscriber delivery.
+
 ---
 
 ## Kinesis
@@ -164,6 +214,25 @@ App → SNS Topic → SQS Queue 1 (email service)
 | **Routing** | Partition key → shard | N/A |
 | **Use Case** | Real-time analytics, log processing | Async decoupling, task queue |
 
+### Real-World Use Cases & When to Use Kinesis
+
+> **The problem it solves:** Ingest and process massive streams of real-time data (logs, IoT telemetry, clickstreams, transactions) — multiple consumers can process the same stream simultaneously, and data can be replayed.
+
+**Kinesis Data Streams (KDS) vs Kinesis Firehose:**
+- KDS = you write consumer code, real-time (< 1 second), replayable
+- Firehose = fully managed delivery to S3/Redshift/OpenSearch, near real-time (60s buffer), no consumer code
+
+**Real-World Scenarios:**
+| Business Problem | Kinesis Solution |
+|-----------------|----------------|
+| Mobile app clickstream: 1M events/sec — need real-time fraud detection + batch reporting | KDS → Consumer 1 (Lambda, real-time fraud) + Consumer 2 (Firehose → S3, batch analytics) |
+| Ad tech: 500K ad impressions/sec must be analyzed in < 1 second | KDS + Lambda (Enhanced Fan-Out, 2MB/s per consumer) — real-time bid optimization |
+| IoT factory: 10,000 sensors — need last 7 days of data for ML replay | KDS with 7-day retention — ML team can replay entire stream for model training |
+| Log aggregation: 100 EC2 instances → need logs in OpenSearch in < 1 min | **Kinesis Firehose** — buffered delivery to OpenSearch, transform with Lambda, no code |
+| Stock market feed: must process trades in the order they arrive per stock | KDS — use stock ticker as partition key → all trades for AAPL land in same shard, ordered |
+
+**Shard capacity math for the exam:** 1 shard = 1 MB/s in + 2 MB/s out. Need 5 MB/s ingestion = 5 shards minimum.
+
 ---
 
 ## Step Functions
@@ -187,6 +256,22 @@ App → SNS Topic → SQS Queue 1 (email service)
 - **Optimistic integrations (waitForTaskToken):** Wait for external callback
 - **Run a job (.sync):** Wait for job to complete (Glue, ECS, Batch)
 
+### Real-World Use Cases & When to Use Step Functions
+
+> **The problem it solves:** Orchestrate complex multi-step workflows with error handling, retries, parallel branches, and human approval steps — without building your own state machine with queues and polling.
+
+**Choose Standard Workflow:** Long-running (days/weeks), business processes, audit trail needed.
+**Choose Express Workflow:** High-volume (IoT, streaming), short duration, cost-sensitive.
+
+**Real-World Scenarios:**
+| Business Problem | Step Functions Solution |
+|-----------------|------------------------|
+| E-commerce order: verify payment → reserve inventory → ship → notify customer | Standard Workflow with 5 Lambda states — if payment fails, compensate (cancel reservation) |
+| ML pipeline: ETL → train model → evaluate → if accuracy > 90%, deploy → else alert | Workflow with Choice state (branch on metric), Parallel state (train multiple models simultaneously) |
+| Document approval: legal review needed — wait days for human approval | `waitForTaskToken` — workflow pauses, sends token via email, resumes when reviewer clicks approve |
+| Nightly ETL: run Glue job → wait for it → run Athena query → store result | Step Functions `.sync` integration — waits for Glue/Athena to complete before next step |
+| Video processing: transcode + thumbnail + metadata extraction (all independent) | **Parallel state** — three Lambda functions run simultaneously, workflow waits for all to finish |
+
 ---
 
 ## AppSync
@@ -207,6 +292,21 @@ App → SNS Topic → SQS Queue 1 (email service)
 - Multi-AZ with failover
 
 > **Exam Tip:** If migrating existing JMS or AMQP application → Amazon MQ. Building new cloud-native messaging → SQS/SNS.
+
+### Real-World Use Cases & When to Use Amazon MQ
+
+> **The problem it solves:** Managed ActiveMQ and RabbitMQ — let you migrate existing on-premises message broker workloads to AWS without rewriting your application.
+
+**Choose Amazon MQ when:** Migrating existing JMS, AMQP, STOMP, MQTT, or OpenWire applications that you can't refactor. For NEW applications, always use SQS/SNS.
+
+**Real-World Scenarios:**
+| Business Problem | Amazon MQ Solution |
+|-----------------|-------------------|
+| Legacy Java EE app uses ActiveMQ with JMS — migrating to AWS | Amazon MQ (ActiveMQ) — drop-in replacement, no code changes, same JMS API |
+| Banking system uses RabbitMQ for inter-service messaging — must migrate | Amazon MQ (RabbitMQ) — same AMQP protocol, exchange/queue topology preserved |
+| Factory automation uses MQTT protocol for sensor data — needs HA | Amazon MQ with Multi-AZ failover — automatic failover, MQTT protocol support |
+
+**The exam rule:** "Existing on-premises broker, AMQP/JMS/STOMP" → Amazon MQ. "Building new microservices messaging" → SQS/SNS. Amazon MQ is specifically for the migration/lift-and-shift use case.
 
 ---
 

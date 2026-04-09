@@ -191,6 +191,22 @@
 
 > **Exam Tip:** WAF = L7 protection. For DDoS (L3/L4) → use Shield. WAF can work together with Shield Advanced.
 
+### Real-World Use Cases & When to Use WAF
+
+> **The problem it solves:** Block malicious HTTP/HTTPS traffic at Layer 7 — SQL injection, XSS, bot attacks, credential stuffing — before it ever reaches your application.
+
+**Real-World Scenarios:**
+| Business Problem | WAF Solution |
+|-----------------|-------------|
+| E-commerce site hit by credential stuffing bots (10K login attempts/min) | WAF Rate-Based Rule — block IPs that make > 100 requests/5 min |
+| Web app vulnerable to SQL injection in search field | WAF Managed Rule Group "SQL injection" — pre-built, turn on instantly |
+| News site scraped by bots causing $10K/month in server costs | WAF Bot Control managed rule — identifies and blocks bots, allows legitimate crawlers |
+| PCI DSS requirement: protect cardholder data from OWASP Top 10 | WAF with AWS Managed Rules (OWASP Top 10) on ALB — one config, compliant |
+| App must block all traffic from Russia and China | WAF Geo Match rule — block by country code |
+| WAF logs needed for security audit | WAF full logging to S3/CloudWatch/Kinesis Firehose |
+
+**WAF deployment priority for the exam:** CloudFront WAF = protection at the edge (global). ALB WAF = protection per region. API Gateway WAF = protection per API.
+
 ---
 
 ## Shield
@@ -214,6 +230,21 @@
 - No infrastructure to manage — enable and go
 - Findings → SNS or EventBridge → auto-remediation (Lambda)
 - **30-day free trial**, then per-volume pricing
+
+### Real-World Use Cases & When to Use GuardDuty
+
+> **The problem it solves:** Continuous, ML-powered threat detection across your AWS account — finds attackers and compromised resources by analyzing API calls, network flows, and DNS — without you having to write detection rules.
+
+**Real-World Scenarios:**
+| Business Problem | GuardDuty Detection |
+|-----------------|---------------------|
+| EC2 instance starts mining cryptocurrency (hacked instance) | GuardDuty detects Bitcoin mining traffic patterns → `CryptoCurrency:EC2/BitcoinTool.B!DNS` finding |
+| IAM credentials stolen from GitHub leak — attacker calls APIs from unusual location | GuardDuty detects `UnauthorizedAccess:IAMUser/TorIPCaller` or unusual geo |
+| Hacker exfiltrates data from S3 bucket to external IP | `Exfiltration:S3/MaliciousIPCaller` finding → EventBridge → Lambda isolates the IAM user |
+| EC2 instance makes DNS lookups to known C2 (Command and Control) domains | `Backdoor:EC2/C&CActivity.B!DNS` — blocks via Security Group auto-remediation |
+| Security team needs compliance evidence of threat monitoring | GuardDuty findings exported to S3 for 90-day audit retention |
+
+**The exam pattern:** GuardDuty DETECTS threats (doesn't block). Add EventBridge + Lambda for automated response (isolate EC2, revoke credentials). GuardDuty ≠ WAF (L7 blocking).
 
 ---
 
@@ -247,6 +278,19 @@
 - Versioning support (AWSCURRENT, AWSPREVIOUS)
 - Cross-account secret sharing
 - Costs money (vs SSM Parameter Store free tier)
+
+### Real-World Use Cases & When to Use Secrets Manager
+
+> **The problem it solves:** Eliminate hardcoded credentials in application code and config files — centralize secrets with automatic rotation so a leaked secret is quickly invalidated and audited.
+
+**Real-World Scenarios:**
+| Business Problem | Secrets Manager Solution |
+|-----------------|------------------------|
+| Developer hardcodes MySQL password in code — pushed to GitHub | Secrets Manager — app calls `GetSecretValue` API at runtime, no credentials in code |
+| PCI DSS audit requires DB password rotation every 90 days | Secrets Manager with auto-rotation — Lambda rotates RDS password, updates secret, zero downtime |
+| Microservices architecture: 20 services need the same API key | One secret in Secrets Manager, all services reference same ARN (centralized management) |
+| Multi-account org: prod secrets must not be accessible by dev teams | Secrets Manager resource policy + cross-account IAM — prod secret denies dev account |
+| Lambda function connects to RDS — can't use connection pooling directly | Lambda → Secrets Manager (GetSecretValue) + **RDS Proxy** (connection pooling) |
 
 ### Secrets Manager vs SSM Parameter Store
 

@@ -56,6 +56,23 @@
 #### CloudWatch Application Insights
 - Automated monitoring for .NET and SQL Server apps
 
+### Real-World Use Cases & When to Use CloudWatch
+
+> **The problem it solves:** Unified observability for your AWS infrastructure — metrics, logs, alarms, and dashboards in one place, with automatic scaling and alerting.
+
+**Real-World Scenarios:**
+| Business Problem | CloudWatch Solution |
+|-----------------|---------------------|
+| EC2 CPU spikes to 100% — nobody notices until app crashes | CloudWatch Alarm on `CPUUtilization > 80%` → SNS → PagerDuty/email alert |
+| App is crashing — need to find the error in 10M log lines | CloudWatch Logs Insights — SQL-like query `filter @message like "ERROR"` returns results in seconds |
+| Lambda memory is maxing out — but default metrics don't show memory | CloudWatch **Lambda Insights** (extension) — adds memory, init duration, cold starts |
+| Memory and disk usage on EC2 are NOT visible (missing from default) | Install **CloudWatch Agent** — sends memory/disk/swap to custom namespace |
+| Auto Scaling group should scale at 6 AM before traffic hits | CloudWatch **Scheduled Alarm** → ASG Scheduled Action — predict known patterns |
+| Security audit needs all API calls from multiple accounts in one place | CloudWatch Logs with **cross-account subscription** → Kinesis → central S3 bucket |
+| Dev team creates dashboard showing all services' health in one view | CloudWatch **Dashboard** — combine EC2 CPU, RDS connections, Lambda errors on one screen |
+
+**The most missed exam fact:** EC2 memory, disk, and swap are NOT collected by default. You MUST install the CloudWatch Agent and configure it. The exam will ask this frequently.
+
 ---
 
 ## CloudTrail
@@ -79,6 +96,22 @@
 
 > **Exam Tip:** CloudTrail = API audit trail. CloudWatch = performance metrics and operational monitoring. Different purposes.
 
+### Real-World Use Cases & When to Use CloudTrail
+
+> **The problem it solves:** Complete audit trail of every API call made in your AWS account — who did what, when, from where, and what was the result. Essential for security investigations and compliance.
+
+**Real-World Scenarios:**
+| Business Problem | CloudTrail Solution |
+|-----------------|---------------------|
+| S3 bucket was made public — security team needs to know who did it | CloudTrail management events — search for `PutBucketAcl` or `PutBucketPolicy` by user and time |
+| Compliance audit: prove all admin actions for last 12 months are logged | Create Trail → deliver to S3 with KMS encryption → 1-year S3 lifecycle retention |
+| EC2 instance was deleted in production — need to find the culprit | CloudTrail Event History — search `TerminateInstances` → shows IAM user, IP, time |
+| Security team wants real-time alert when anyone calls `DeleteTrail` | CloudTrail → CloudWatch Logs → Metric Filter for `DeleteTrail` → Alarm → SNS alert |
+| Centralized security account needs all organization CloudTrail logs | **Organization Trail** — single trail covers all accounts, delivers to central S3 |
+| Financial regulation requires all S3 object-level access to be audited | Enable **CloudTrail Data Events** for S3 — logs every GetObject, PutObject, DeleteObject |
+
+**Critical exam facts:** Management events (CreateBucket, RunInstances) are enabled by default. Data events (S3 object reads/writes, Lambda invocations) are NOT enabled by default and cost extra. 90 days of free event history — you need a Trail for longer.
+
 ---
 
 ## AWS Config
@@ -99,6 +132,22 @@
 - `rds-storage-encrypted` — RDS encrypted at rest
 
 > **Exam Tip:** Config = compliance and drift detection. NOT a real-time blocking service — detects and can remediate, but doesn't prevent.
+
+### Real-World Use Cases & When to Use AWS Config
+
+> **The problem it solves:** Continuous compliance monitoring — automatically detect when resources drift from your approved configuration, generate compliance reports, and optionally auto-remediate violations.
+
+**Real-World Scenarios:**
+| Business Problem | AWS Config Solution |
+|-----------------|---------------------|
+| Security team needs to know every time an S3 bucket becomes public | Config Rule `s3-bucket-public-read-prohibited` → non-compliant → SNS alert |
+| Auditor asks "what did our VPC security groups look like on March 1st?" | Config **resource configuration history** — point-in-time snapshot of any resource |
+| PCI DSS: all EBS volumes must be encrypted at all times | Config Rule `encrypted-volumes` → continuous evaluation → compliance dashboard |
+| Someone opens port 22 (SSH) to 0.0.0.0/0 — must auto-fix immediately | Config Rule `restricted-ssh` → non-compliant → **Auto Remediation** via SSM (revokes the rule) |
+| Multi-account org: 50 accounts need uniform compliance reporting | Config **Aggregator** — combine all accounts into one compliance dashboard |
+| Team deploys infrastructure via Terraform but auditors need to track drift | Config **Drift Detection** — compare deployed resource config vs expected config |
+
+**Config vs CloudTrail for the exam:** Config = "what does the resource look like now/historically?" (state). CloudTrail = "who changed it and when?" (action). They complement each other.
 
 ---
 
@@ -126,6 +175,22 @@
 - **Tag Policies:** Enforce tag consistency
 - **AI Services Opt-out Policies:** Opt out of AWS AI services using your data
 - **Backup Policies:** Centralized backup governance
+
+### Real-World Use Cases & When to Use AWS Organizations
+
+> **The problem it solves:** Manage multiple AWS accounts centrally — consolidated billing, guardrails (SCPs), and governance at scale for enterprises with many teams and environments.
+
+**Real-World Scenarios:**
+| Business Problem | AWS Organizations Solution |
+|-----------------|--------------------------|
+| Enterprise has 50 teams — each needs isolated AWS account, but one invoice | Organizations **Consolidated Billing** — one payment, volume discounts shared |
+| Security team needs to prevent ANY account from disabling CloudTrail | **SCP**: `Deny cloudtrail:StopLogging` applied to root OU — no user in any account can override |
+| Only certain AWS regions are approved (data sovereignty — EU only) | **SCP**: `Deny` on all regions except `eu-west-1` and `eu-central-1` |
+| 10 Reserved Instances in account A, account B is underutilizing them | Organizations RI sharing — unused RIs automatically applied across accounts |
+| New project team needs an isolated account provisioned in 5 minutes | Control Tower **Account Factory** — new account with guardrails + baseline configs |
+| Enforce that all EC2 instances have `Environment` and `Owner` tags | **Tag Policies** — validate tag compliance across all accounts |
+
+**Critical exam fact:** SCPs do NOT apply to the management account (root). They restrict member accounts/OUs only. SCPs don't grant permissions — they only restrict what IAM can grant.
 
 ---
 
