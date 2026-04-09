@@ -25,8 +25,8 @@
 | Day 3 | Networking (VPC, Route53, CloudFront, ELB) | `03_NETWORKING.md` |
 | Day 4 | Databases (RDS, Aurora, DynamoDB, ElastiCache) | `04_DATABASE.md` |
 | Day 5 | Security (IAM, KMS, WAF, GuardDuty) + Monitoring | `05_SECURITY.md` + `06_MONITORING.md` |
-| Day 6 | Integration + Analytics + Migration + AI/ML | `07_INTEGRATION.md` + `08_ANALYTICS.md` + `09_MIGRATION_DR.md` + `11_AI_ML_SERVICES.md` |
-| Day 7 | Full Mock Test + Weak Area Review + Exam Tips | `10_EXAM_TIPS.md` |
+| Day 6 | Integration + Analytics + Migration + AI/ML | `07_INTEGRATION.md` + `08_ANALYTICS.md` + `09_MIGRATION_DR.md` + `10_AI_ML_SERVICES.md` |
+| Day 7 | Full Mock Test + Weak Area Review + Exam Tips | `11_EXAM_TIPS.md` |
 
 ---
 
@@ -41,8 +41,8 @@
 - [07_INTEGRATION.md](07_INTEGRATION.md) — SQS, SNS, EventBridge, Step Functions, Kinesis
 - [08_ANALYTICS.md](08_ANALYTICS.md) — Athena, Glue, EMR, OpenSearch, QuickSight, Redshift Spectrum
 - [09_MIGRATION_DR.md](09_MIGRATION_DR.md) — DMS, Snow Family, Backup, DR Strategies, CloudFormation
-- [10_EXAM_TIPS.md](10_EXAM_TIPS.md) — Exam strategy, tricky question patterns, last-minute tips
-- [11_AI_ML_SERVICES.md](11_AI_ML_SERVICES.md) — SageMaker, Rekognition, Comprehend, Lex, Bedrock, Textract, Polly, Translate
+- [10_AI_ML_SERVICES.md](10_AI_ML_SERVICES.md) — SageMaker, Rekognition, Comprehend, Lex, Bedrock, Textract, Polly, Translate
+- [11_EXAM_TIPS.md](11_EXAM_TIPS.md) — Exam strategy, tricky question patterns, last-minute tips
 
 ---
 
