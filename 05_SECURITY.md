@@ -49,6 +49,23 @@
 - Use roles for EC2/Lambda (never hardcode keys)
 - Enable IAM Credential Report for auditing
 
+### Real-World Use Cases & When IAM Patterns Apply
+
+> **The problem it solves:** Centralized, fine-grained access control for every AWS action — who (identity) can do what (action) on which resource, under what conditions.
+
+**Real-World Scenarios:**
+| Business Problem | IAM Solution |
+|-----------------|-------------|
+| EC2 app needs to read from S3 — developer wants to hardcode access keys | **EC2 Instance Role** — attach IAM role to EC2, credentials auto-rotated, no hardcoded keys |
+| Company A wants Company B's team to access their AWS account | **Cross-Account Role** — Company A creates role trusting Company B's account; their users assume it |
+| Enterprise uses Azure AD for SSO — wants same login for AWS Console | **SAML 2.0 Federation** — ADFS/Azure AD → STS AssumeRoleWithSAML → AWS Console |
+| Mobile app users need to read their own S3 files | **Cognito Identity Pools** → IAM role scoped per user with `${cognito-identity.amazonaws.com:sub}` |
+| Security team wants to ensure no one in entire org can disable CloudTrail | **SCP on Organizations root OU** — deny `cloudtrail:StopLogging` for all member accounts |
+| Junior dev accidentally deleted production S3 bucket | **Permission Boundary** on dev IAM role — limits max permissions even if policy grants more |
+| Contractor needs temporary access for 8 hours only | STS `AssumeRole` with `MaxSessionDuration` + time-based condition in policy |
+
+**The policy evaluation mental model:** Explicit Deny beats everything → SCP limits the ceiling → resource policy can grant cross-account → identity policy must allow → permission boundary caps the max.
+
 ---
 
 ## KMS — Key Management Service
@@ -98,6 +115,23 @@
 
 > **Exam Tip:** CloudHSM = you need to manage your own keys on dedicated hardware. KMS = AWS manages HSM but shares it.
 
+### Real-World Use Cases & When to Use KMS
+
+> **The problem it solves:** Managed encryption key service — create, store, and control the keys used to encrypt your data across all AWS services, with full audit trail via CloudTrail.
+
+**Choose KMS when:** You need encryption at rest for AWS services, want centralized key management with access control, or need audit trail of all key usage (compliance).
+
+**Real-World Scenarios:**
+| Business Problem | KMS Solution |
+|-----------------|-------------|
+| HIPAA compliance: all RDS data must be encrypted with customer-managed keys | Create CMK (Customer Managed Key) → enable RDS encryption at creation → key policy restricts access |
+| S3 bucket stores financial records — encryption required, audit who accessed keys | **SSE-KMS** — every S3 object encrypted, every decrypt call logged in CloudTrail |
+| Application encrypts 100GB files — using KMS Encrypt API directly is too slow | **Envelope Encryption** — KMS generates Data Key, app encrypts file locally, stores encrypted data key with file |
+| Multi-region app: encrypt in us-east-1, decrypt in eu-west-1 | **KMS Multi-Region Key** — same key material replicated, cross-region decrypt without re-encryption |
+| Payment processor needs dedicated HSM, can't share with other AWS customers | **CloudHSM** — single-tenant, FIPS 140-2 Level 3, you control the HSM (not AWS) |
+
+**KMS vs CloudHSM for the exam:** "Dedicated hardware, exclusive HSM, you manage keys" → CloudHSM. "Managed, integrated with AWS services, audit via CloudTrail" → KMS.
+
 ---
 
 ## Cognito
@@ -122,6 +156,25 @@
 - MFA, adaptive authentication
 - Compromised credential detection
 - Advanced security features (paid)
+
+### Real-World Use Cases & When to Use Cognito
+
+> **The problem it solves:** Add user authentication (sign-up, sign-in, social login, MFA) to your web/mobile app without building it from scratch — and grant those users access to AWS services via temporary credentials.
+
+**The two-service mental model:**
+- **User Pool** = your user directory + authentication → returns JWT
+- **Identity Pool** = exchange that JWT for AWS IAM credentials → access AWS services directly
+
+**Real-World Scenarios:**
+| Business Problem | Cognito Solution |
+|-----------------|----------------|
+| Mobile app needs user sign-up/sign-in (email + social login with Google) | **User Pool** — built-in UI, Google/Facebook federation, MFA, email verification |
+| App users need to upload files directly to their own S3 "folder" | **Identity Pool** → IAM role scoped with `${cognito-identity.amazonaws.com:sub}` → user can only access `s3://bucket/userId/*` |
+| Enterprise SSO: employees use Okta — want same login in the customer portal | **User Pool + SAML federation** — Okta as SAML IdP, Cognito is the SP |
+| User Pool (authentication) + need to call DynamoDB from the mobile app | User Pool (JWT) → **Identity Pool** (AWS credentials) → direct DynamoDB access from app |
+| App requires MFA for sensitive operations (bank transfers) | User Pool with MFA enforcement — SMS or TOTP (Google Authenticator) |
+
+**Flow to memorize:** User Pool login → get JWT → swap JWT at Identity Pool → get AWS credentials → call S3/DynamoDB/etc. directly.
 
 ---
 

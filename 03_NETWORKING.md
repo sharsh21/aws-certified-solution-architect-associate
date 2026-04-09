@@ -73,6 +73,27 @@
 - Security Group: allow port 22/3389 from specific IPs only
 - **AWS Systems Manager Session Manager:** Alternative (no bastion needed, no open ports)
 
+### Real-World Use Cases & When to Design with VPC
+
+> **The problem it solves:** Network isolation in the cloud — your own logically private network where you control IP ranges, subnets, routing, and firewalls.
+
+**VPC Design Scenarios:**
+| Business Problem | VPC Solution |
+|-----------------|-------------|
+| Multi-tier web app (web, app, DB layers must be isolated) | 3 private subnets (one per tier) + 1 public subnet for ALB. DB layer has no route to internet |
+| Dev and prod must be completely isolated but share some services | Separate VPCs per environment + VPC Peering (or Transit Gateway) for shared services VPC |
+| 50 VPCs across 10 accounts need to communicate without peering mess | **Transit Gateway** — hub-and-spoke, one attachment per VPC, transitive routing |
+| Lambda functions must access a private RDS without internet exposure | **VPC Interface Endpoint** (PrivateLink) or deploy Lambda in VPC private subnet |
+| EC2 in private subnet needs to download packages from internet | **NAT Gateway** in public subnet — outbound only, private subnet has route 0.0.0.0/0 → NAT |
+| Security team requires all S3 traffic to stay off the internet | **S3 Gateway Endpoint** — free, route-table-based, traffic stays on AWS network |
+| On-premises data center must securely connect to 5 VPCs | **Direct Connect Gateway** + Transit Gateway — one DX, connects all VPCs |
+
+**Critical VPC rules for the exam:**
+- Subnets are AZ-specific — for HA, create subnets in at least 2 AZs
+- NAT Gateway is AZ-specific — deploy one per AZ for HA (each AZ's private subnet routes to its local NAT)
+- Security Groups = stateful (return traffic auto-allowed). NACLs = stateless (must allow both directions)
+- VPC Peering = non-transitive. Transit Gateway = transitive (the hub solves this)
+
 ---
 
 ## Route 53
@@ -115,6 +136,27 @@
 - **Resolver Inbound Endpoint:** On-premises → Route 53 DNS
 - **Resolver Outbound Endpoint:** VPC → on-premises DNS
 - **Forwarding Rules:** Forward specific domains to custom resolvers
+
+### Real-World Use Cases & When to Use Each Routing Policy
+
+> **The problem it solves:** DNS management with traffic routing intelligence — direct users to the right endpoint based on performance, geography, failover, or traffic weighting.
+
+**Routing Policy Decision Table:**
+| Scenario | Routing Policy |
+|----------|---------------|
+| Global SaaS app — route users to nearest AWS region for best speed | **Latency** — measures actual network latency, sends to lowest-latency region |
+| A/B test a new feature on 10% of traffic | **Weighted** — 90% weight to v1, 10% weight to v2 |
+| EU users must only hit EU servers (GDPR data residency) | **Geolocation** — EU traffic → eu-west-1, US traffic → us-east-1 |
+| Primary region goes down — failover to DR region automatically | **Failover** — health check on primary; if unhealthy, DNS points to secondary |
+| Show different content to users in different countries (media rights) | **Geolocation** — UK gets BBC content, US gets NBC content |
+| Enterprise wants to gradually shift traffic from on-premises to AWS | **Weighted** — start at 10% AWS, increase weekly to 100% |
+| Return multiple healthy IPs and let client pick | **Multi-Value Answer** — returns up to 8 healthy records |
+
+**Key distinctions to memorize:**
+- **Latency** = performance-based (measures real network latency to AWS regions)
+- **Geolocation** = location-based (user's country/continent — for compliance/content)
+- **Geoproximity** = distance + bias (use Traffic Flow to fine-tune geographic boundaries)
+- **Failover** always requires health checks on the primary record
 
 ---
 
@@ -163,6 +205,27 @@
 - **Price Classes:** All (global), 100 (NA+EU only), 200 (most regions)
 - Cache hit rate → lower origin cost
 
+### Real-World Use Cases & When to Use CloudFront
+
+> **The problem it solves:** Cache and deliver content from 400+ global edge locations — reduces latency, cuts origin costs, and provides a security perimeter (WAF, DDoS protection) at the edge.
+
+**Choose CloudFront when:** Static or cacheable content needs global low-latency delivery. You need DDoS protection + WAF at the edge. You want to serve private S3 content without exposing the bucket.
+
+**Real-World Scenarios:**
+| Business Problem | CloudFront Solution |
+|-----------------|-------------------|
+| Netflix-like platform: stream videos to users worldwide with low buffering | CloudFront distribution + S3 origin — edge caches video segments near users |
+| S3 bucket hosting React app — direct S3 URL is slow for Asia users | CloudFront with S3 origin (OAC) — cached at nearest edge, S3 stays private |
+| E-commerce site hit by bot DDoS during flash sale | CloudFront + WAF + Shield Advanced — DDoS absorbed at edge, blocks bot IPs |
+| API is slow because every request hits the backend | CloudFront caches GET responses at edge — 80% cache hit rate → 80% less origin load |
+| Content must be locked to paying subscribers only (streaming) | CloudFront Signed URLs — each video URL has expiry + user-specific signature |
+| Multi-tenant SaaS: each tenant's domain needs its own TLS cert | CloudFront SNI — one distribution, multiple ACM certs, free |
+| Company wants to block access from sanctioned countries | CloudFront Geo Restriction — block by country code |
+
+**CloudFront vs Global Accelerator for the exam:**
+- CloudFront = caches HTTP/HTTPS content at edge. Best for static/cacheable content.
+- Global Accelerator = routes non-cacheable TCP/UDP traffic through AWS backbone. Best for gaming, VoIP, IoT.
+
 ---
 
 ## API Gateway
@@ -188,6 +251,25 @@
 - Lambda Authorizer (custom auth, JWT, OAuth)
 - Cognito User Pools
 
+### Real-World Use Cases & When to Use API Gateway
+
+> **The problem it solves:** Fully managed API layer that handles traffic management, authorization, monitoring, versioning, and throttling — so you don't build all of that yourself.
+
+**API Type decision:**
+- **REST API** — Full feature set, API keys, usage plans, request/response transformation, caching
+- **HTTP API** — 70% cheaper, lower latency, simpler — for Lambda/HTTP backends with OIDC/JWT auth
+- **WebSocket API** — Real-time bidirectional communication (chat, live dashboards, gaming)
+
+**Real-World Scenarios:**
+| Business Problem | API Gateway Solution |
+|-----------------|---------------------|
+| Startup wants serverless REST API (no server management) | HTTP API → Lambda → DynamoDB — fully serverless, auto-scales from 0 |
+| Public API product: different clients have different rate limits | REST API + Usage Plans + API Keys — throttle per customer tier |
+| Real-time chat app needs persistent connections | WebSocket API → Lambda → DynamoDB — maintains connection state |
+| Backend needs to throttle at 1,000 RPS per client to prevent abuse | REST API rate-based throttling + WAF integration |
+| Canary release: test new Lambda version with 5% of API traffic | REST API Canary Deployment — 95% goes to prod, 5% to new stage |
+| Internal API only accessible from within VPC | Private REST API with VPC Endpoint (Interface) |
+
 ---
 
 ## Direct Connect
@@ -205,6 +287,23 @@
 - Multiple DX connections: standard vs maximum resiliency
 - DX + VPN as backup
 
+### Real-World Use Cases & When to Use Direct Connect
+
+> **The problem it solves:** A private, dedicated network pipe between your data center and AWS — consistent bandwidth, low latency, no internet variability, and potentially lower data transfer costs at scale.
+
+**Choose Direct Connect when:** Data volume is large (TB/day+), latency must be predictable, compliance requires avoiding the public internet, or you're processing sensitive data.
+
+**Real-World Scenarios:**
+| Business Problem | Direct Connect Solution |
+|-----------------|------------------------|
+| Bank must transfer 50TB of trading data to AWS every night — internet is too slow/unreliable | 10 Gbps DX connection — dedicated pipe, transfers in < 2 hours nightly |
+| Healthcare company sends CT scans (10GB each) to AWS for AI analysis — HIPAA requires private network | DX — data never traverses the public internet, meets HIPAA network requirements |
+| Enterprise has 200ms latency issues with S3 API over internet | DX reduces latency to 10-20ms — consistent, not internet-dependent |
+| Company needs DX but can't afford downtime if link fails | DX (primary) + Site-to-Site VPN (backup) — failover via BGP |
+| One DX connection must reach VPCs in us-east-1, eu-west-1, ap-southeast-1 | DX + **Direct Connect Gateway** — one DX, connect to multiple VPCs across regions |
+
+**Critical exam note:** Direct Connect is NOT encrypted by default. For encrypted DX: set up Site-to-Site VPN over the DX connection (MACsec for dedicated connections).
+
 ---
 
 ## Global Accelerator
@@ -215,6 +314,23 @@
 - **vs CloudFront:**
   - CloudFront = cache content (HTTP/HTTPS), optimizes for cacheable content
   - Global Accelerator = accelerate TCP/UDP, non-cacheable (gaming, IoT, VoIP), static IPs
+
+### Real-World Use Cases & When to Use Global Accelerator
+
+> **The problem it solves:** Route global user traffic through AWS's private backbone network instead of the unpredictable public internet — improving performance for non-cacheable workloads and providing 2 static IPs for whitelisting.
+
+**Choose Global Accelerator when:**
+- Application is non-HTTP (gaming: TCP/UDP, VoIP, IoT)
+- You need static IP addresses globally (firewall rules, client whitelisting)
+- You need instant failover between regions (health-check-based, <30 seconds)
+
+**Real-World Scenarios:**
+| Business Problem | Global Accelerator Solution |
+|-----------------|---------------------------|
+| Mobile game with players in 50 countries — 200ms latency is unacceptable | Global Accelerator routes players through AWS backbone from nearest PoP — cuts latency 60% |
+| Enterprise app: corporate firewall must whitelist API IPs — they change with ELB | 2 static Anycast IPs from Global Accelerator — never change, whitelist once forever |
+| Financial trading platform needs sub-5ms regional failover | Global Accelerator health-checks ALBs in 2 regions — instant failover via Anycast routing |
+| IoT fleet (UDP protocol) spans 30 countries | Global Accelerator accelerates UDP traffic through AWS network — NLB as endpoint |
 
 ---
 
