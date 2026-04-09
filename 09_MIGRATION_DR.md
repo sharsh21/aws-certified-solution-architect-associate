@@ -24,6 +24,25 @@
 - **RTO (Recovery Time Objective):** How long to recover = downtime tolerance
 - **RPO (Recovery Point Objective):** How much data loss = backup frequency
 
+### Real-World DR Strategy Selection
+
+> **The core principle:** Match DR strategy to business requirements. Every reduction in RTO/RPO adds cost.
+
+**DR Strategy Selection by Business Scenario:**
+| Company Type | RTO/RPO Tolerance | DR Strategy |
+|-------------|------------------|-------------|
+| Personal blog / non-critical internal tool | Hours/Hours | **Backup & Restore** — nightly S3 backup, restore from snapshot |
+| SMB e-commerce — can tolerate 30 min downtime | ~10 min / Minutes | **Pilot Light** — Aurora Multi-AZ running, EC2 AMI ready, start fleet on disaster |
+| SaaS product — SLA says 99.9% uptime (8.7 hrs/year) | Minutes / Seconds | **Warm Standby** — scaled-down copy always running in DR region, scale up on failover |
+| Stock exchange, banking core system — zero tolerance | Near-zero / Near-zero | **Multi-Site Active/Active** — Route 53 latency routing across 2 regions, both serve live traffic |
+| Healthcare system with patient records — 1-hour RPO max | 15 min / 1 hour | **Pilot Light** with hourly RDS snapshots + Aurora cross-region replica |
+
+**Architect's mental model for the exam:**
+- Backup & Restore = "we save files, restore if disaster"
+- Pilot Light = "engine is running (DB), but car is parked (EC2 stopped)"
+- Warm Standby = "a smaller car is driving slowly, we floor it when disaster strikes"
+- Active/Active = "two cars driving the same route simultaneously"
+
 ---
 
 ## AWS Backup
@@ -60,6 +79,21 @@
 - EC2 instance that runs replication tasks
 - Located in VPC
 - Can migrate from on-premises (with Direct Connect or VPN)
+
+### Real-World Use Cases & When to Use DMS
+
+> **The problem it solves:** Migrate databases to AWS with minimal downtime — source database stays online and serving traffic during the entire migration, then you do a brief cutover.
+
+**Real-World Scenarios:**
+| Business Problem | DMS Solution |
+|-----------------|-------------|
+| Migrate Oracle DB (on-premises, 500GB) to Aurora PostgreSQL — can't have > 1 hr downtime | DMS + SCT (schema conversion) — full load + CDC keeps source in sync, cut over in minutes |
+| Migrate MySQL on EC2 to RDS MySQL (same engine) — no schema changes | DMS homogeneous migration (no SCT) — full load + CDC, near-zero downtime |
+| Ongoing replication from on-premises SQL Server → Redshift for analytics | DMS CDC only — continuously replicate changes for real-time analytics warehouse |
+| Data warehouse consolidation: migrate 5 on-prem DBs to single Aurora cluster | Multiple DMS tasks, each migrating one DB — parallel migration, consolidated target |
+| Development team needs a copy of prod data in dev (anonymized) | DMS with transformation rules — copy data and mask PII fields during migration |
+
+**The SCT rule:** Homogeneous = same engine (MySQL → MySQL, Oracle → Oracle) — SCT NOT needed. Heterogeneous = different engines (Oracle → Aurora, SQL Server → PostgreSQL) — SCT REQUIRED.
 
 ---
 
@@ -131,6 +165,20 @@
 - CloudFormation = AWS native, free
 - Terraform = multi-cloud, OSS, more flexible
 
+### Real-World Use Cases & When to Use CloudFormation
+
+> **The problem it solves:** Define your entire AWS infrastructure as code — version controlled, repeatable, automated, and self-documenting. One template creates identical environments in minutes.
+
+**Real-World Scenarios:**
+| Business Problem | CloudFormation Solution |
+|-----------------|------------------------|
+| Team creates dev/staging/prod environments manually — configuration drift everywhere | CloudFormation Stack — one template, parameterized (env=dev/prod), identical every time |
+| Enterprise needs to deploy the same 3-tier app in 10 AWS accounts | **Stack Sets** — deploy one stack to 10 accounts across regions with one command |
+| Team accidentally deleted security group — need to track manual changes | **Drift Detection** — compares actual resource state vs template, flags changes |
+| Company builds reusable VPC module for all teams | **Nested Stacks** — VPC template imported by all application stacks |
+| New stack deployment could break production — need to preview changes | **Change Sets** — see what will be created/modified/deleted before executing |
+| Database must survive stack deletion (production data protection) | `DeletionPolicy: Retain` on RDS resource — stack deletes but DB persists |
+
 ---
 
 ## AWS CDK — Cloud Development Kit
@@ -165,6 +213,20 @@
 | **DataSync** | One-time or scheduled data migration to/from AWS |
 | **Storage Gateway** | Ongoing hybrid access (on-prem apps access AWS storage) |
 | **Snow Family** | Offline data transfer (too much data for network) |
+
+### Real-World Use Cases & When to Use DataSync
+
+> **The problem it solves:** Fast, automated data transfer between on-premises storage and AWS — up to 10x faster than open-source tools, with built-in integrity verification.
+
+**Real-World Scenarios:**
+| Business Problem | DataSync Solution |
+|-----------------|-----------------|
+| Data center shutting down — 50TB NFS share needs to move to EFS | DataSync with NFS agent on-premises — scheduled transfer, integrity check, 10x faster than rsync |
+| Research institution transfers 100GB genomics datasets nightly to S3 | DataSync scheduled task — runs every night at 2 AM, only transfers changed files (incremental) |
+| Migrate HDFS cluster data to S3 for a cloud data lake | DataSync HDFS connector — scan HDFS, transfer to S3, verify checksums |
+| Company wants to migrate on-premises SMB file server to FSx for Windows | DataSync SMB agent → FSx for Windows — preserves NTFS metadata, ACLs |
+
+**DataSync vs Storage Gateway for the exam:** DataSync = one-time or periodic migration/transfer. Storage Gateway = ongoing, permanent hybrid access where on-premises apps continue using AWS storage.
 
 ---
 
@@ -215,6 +277,20 @@
 | **Repurchase (Drop & Shop)** | Move to SaaS (Salesforce instead of CRM) | Medium |
 | **Refactor/Re-architect** | Cloud-native redesign (microservices) | High |
 | **Relocate** | VMware to VMware Cloud on AWS | Low-Medium |
+
+### Real-World 7 Rs Examples
+
+> **The problem it solves:** Choose the right migration strategy for each application — not every app needs to be refactored; some should just be moved, optimized slightly, or retired.
+
+| Real-World Application | 7R Strategy | Rationale |
+|-----------------------|------------|-----------|
+| 100 old internal tools nobody uses | **Retire** | Discovery shows 30% of apps have zero traffic — decommission |
+| Mainframe billing system — too risky to touch | **Retain** | Keep on-prem 2 more years while planning modernization |
+| Legacy Windows app (no source code) | **Rehost** — AWS MGN | Lift entire VM to EC2, no changes needed |
+| MySQL on EC2 (own server) | **Replatform** — RDS MySQL | Same MySQL, but now managed: automated backups, Multi-AZ, patching |
+| On-premises CRM (custom-built) | **Repurchase** — Salesforce | Cheaper to buy SaaS than maintain custom CRM |
+| Monolithic e-commerce app (scaling issues) | **Refactor** — microservices | Break into Lambda + DynamoDB + SQS for infinite scale |
+| VMware on-premises vSphere cluster | **Relocate** — VMware Cloud on AWS | Same vSphere tools, move VMs to AWS without OS changes |
 
 ---
 
